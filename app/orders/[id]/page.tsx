@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 
 type AirtableRecord = {
   id: string;
@@ -9,11 +10,13 @@ type AirtableRecord = {
   createdTime?: string;
 };
 
-export default function OrderDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+type RouteParams = { id: string };
+
+export default function OrderDetailPage() {
+  const { id } = useParams<RouteParams>();
+  const recordId =
+    typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
+
   const [order, setOrder] = useState<AirtableRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -37,9 +40,11 @@ export default function OrderDetailPage({
       if (!apiKey || !baseId || !tableName) {
         throw new Error("Variáveis do Airtable ausentes. Verifique .env.local");
       }
+      if (!recordId) throw new Error("ID do pedido inválido.");
+
       const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(
         tableName
-      )}/${params.id}`;
+      )}/${recordId}`;
 
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${apiKey}` },
@@ -63,7 +68,9 @@ export default function OrderDetailPage({
       await fetchOrder();
       setLoading(false);
     })();
-  }, [params.id]);
+    // só quando o id mudar
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordId]);
 
   const f = order?.fields || {};
   const status = f["Status"] ?? "—";
@@ -181,7 +188,6 @@ export default function OrderDetailPage({
             )}
           </div>
 
-          {/* Bloco do PIX: só aparece se existir código E o status ainda NÃO for "Pago" */}
           {pixCode && !isPaid && (
             <div className="rounded-xl border p-4 bg-white">
               <h2 className="text-lg font-semibold mb-2">Pagamento PIX</h2>
