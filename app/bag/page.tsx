@@ -174,105 +174,103 @@ export default function BagPage() {
   const total = items.length > 0 ? subtotal + delivery : 0;
 
   async function handleCheckout() {
-    try {
-      setErr(null);
-      setOkMsg(null);
+  try {
+    setErr(null);
+    setOkMsg(null);
 
-      if (items.length === 0) {
-        setErr("Sua sacola está vazia.");
-        return;
-      }
-
-      // Garante login: se não estiver logado, leva para /auth com retorno automático
-      const { data: u } = await supabase.auth.getUser();
-      const user = u?.user;
-      if (!user) {
-        const next = "/bag?checkout=1#pix";
-        router.push(`/auth?next=${encodeURIComponent(next)}`);
-        return;
-      }
-
-     // Precisa de sessão + e-mail; se faltar, redireciona corretamente
-if (!profile?.email) {
-  const { data: u2 } = await supabase.auth.getUser();
-  if (!u2?.user) {
-    // sem sessão: vai pro auth e volta pro PIX
-    router.replace(`/auth?next=${encodeURIComponent("/bag?checkout=1#pix")}`);
-  } else {
-    // com sessão mas sem e-mail/cadastro: vai pro profile e depois volta pro PIX
-    router.replace(`/profile?next=${encodeURIComponent("/bag?checkout=1#pix")}`);
-  }
-  return;
-}
-
-      // Gera PIX (copia-e-cola) com valor do pedido
-      const key = (process.env.NEXT_PUBLIC_PIX_KEY || "").replace(/\D/g, "");
-      const merchant = (
-        process.env.NEXT_PUBLIC_PIX_MERCHANT || "LOOK PAGAMENTOS"
-      ).toUpperCase();
-      const city = (
-        process.env.NEXT_PUBLIC_PIX_CITY || "SAO PAULO"
-      ).toUpperCase();
-      if (!key) {
-        setErr("Chave PIX não configurada.");
-        return;
-      }
-
-      const txid = `LOOK${Date.now()}`.slice(0, 25);
-      const payload = buildPix({ key, merchant, city, amount: total, txid });
-
-      // resumo dos itens para Notes
-      const itemsSummary = items
-        .map(
-          (it) =>
-            `• ${it.name} (${it.size}) — ${it.store_name} — x${it.qty} — R$ ${(
-              it.unit_price * it.qty
-            ).toFixed(2)}`
-        )
-        .join("\n");
-
-      setCreating(true);
-
-      await createOrder({
-        Status: "Aguardando Pagamento",
-
-        Name: profile.name || "",
-        "User Email": profile.email || "",
-        "User WhatsApp": profile.whatsapp || "",
-        Street: profile.street || "",
-        Number: profile.number || "",
-        Complement: profile.complement || "",
-        CEP: profile.cep || "",
-        City: profile.city || "São Paulo",
-
-        "Item Price": Number(subtotal.toFixed(2)),
-        "Delivery Fee": Number(delivery.toFixed(2)),
-        Total: Number(total.toFixed(2)),
-
-        "Product ID": items.map((it) => String(it.product_id)).join(", "),
-        "Product Name": items.map((it) => it.name).join(" | "),
-        "Store Name": items.map((it) => it.store_name).join(", "),
-        Size: items.map((it) => it.size).join(", "),
-
-        Notes: `Items:\n${itemsSummary}\n\nLojas distintas: ${uniqueStores.length}\nTXID: ${txid}`,
-        "PIX Code": payload,
-      });
-
-      setPixCode(payload);
-      setOkMsg("Pedido criado! Pague via PIX para prosseguir.");
-      // opcional: rolar até a seção do PIX
-      setTimeout(() => {
-        if (typeof window !== "undefined") {
-          const el = document.querySelector("#pix-section");
-          el?.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      }, 50);
-    } catch (e: any) {
-      setErr(e.message ?? "Erro ao criar pedido");
-    } finally {
-      setCreating(false);
+    if (items.length === 0) {
+      setErr("Sua sacola está vazia.");
+      return;
     }
+
+    // 1) Checa sessão SEM rodeios
+    const { data: u } = await supabase.auth.getUser();
+    const sessionUser = u?.user ?? null;
+
+    if (!sessionUser) {
+      // sem login → vai pro auth e volta pro PIX automaticamente
+      router.replace(`/auth?next=${encodeURIComponent("/bag?checkout=1#pix")}`);
+      return;
+    }
+
+    // 2) Garante e-mail (usa o do user ou do perfil como fallback)
+    const email = sessionUser.email || profile?.email || null;
+    if (!email) {
+      // logado mas faltando dados → vai pro profile e volta pro PIX
+      router.replace(`/profile?next=${encodeURIComponent("/bag?checkout=1#pix")}`);
+      return;
+    }
+
+    // 3) PIX config
+    const key = (process.env.NEXT_PUBLIC_PIX_KEY || "").replace(/\D/g, "");
+    const merchant = (process.env.NEXT_PUBLIC_PIX_MERCHANT || "LOOK PAGAMENTOS").toUpperCase();
+    const city = (process.env.NEXT_PUBLIC_PIX_CITY || "SAO PAULO").toUpperCase();
+    if (!key) {
+      setErr("Chave PIX não configurada.");
+      return;
+    }
+
+    const { subtotal } = bagTotals(items);
+    const uniqueStores = Array.from(new Set(items.map((it) => it.store_name)));
+    const delivery = items.length > 0 ? DELIVERY_FEE * uniqueStores.length : 0;
+    const total = items.length > 0 ? subtotal + delivery : 0;
+
+    const txid = `LOOK${Date.now()}`.slice(0, 25);
+    const payload = buildPix({ key, merchant, city, amount: total, txid });
+
+    // resumo dos itens para Notes
+    const itemsSummary = items
+      .map(
+        (it) =>
+          `• ${it.name} (${it.size}) — ${it.store_name} — x${it.qty} — R$ ${(
+            it.unit_price * it.qty
+          ).toFixed(2)}`
+      )
+      .join("\n");
+
+    setCreating(true);
+
+    await createOrder({
+      Status: "Aguardando Pagamento",
+
+      Name: profile?.name || "",
+      "User Email": email,
+      "User WhatsApp": profile?.whatsapp || "",
+      Street: profile?.street || "",
+      Number: profile?.number || "",
+      Complement: profile?.complement || "",
+      CEP: profile?.cep || "",
+      City: profile?.city || "São Paulo",
+
+      "Item Price": Number(subtotal.toFixed(2)),
+      "Delivery Fee": Number(delivery.toFixed(2)),
+      Total: Number(total.toFixed(2)),
+
+      "Product ID": items.map((it) => String(it.product_id)).join(", "),
+      "Product Name": items.map((it) => it.name).join(" | "),
+      "Store Name": items.map((it) => it.store_name).join(", "),
+      Size: items.map((it) => it.size).join(", "),
+
+      Notes: `Items:\n${itemsSummary}\n\nLojas distintas: ${uniqueStores.length}\nTXID: ${txid}`,
+      "PIX Code": payload,
+    });
+
+    setPixCode(payload);
+    setOkMsg("Pedido criado! Pague via PIX para prosseguir.");
+
+    // rola até a seção do PIX
+    setTimeout(() => {
+      if (typeof window !== "undefined") {
+        const el = document.querySelector("#pix-section");
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 50);
+  } catch (e: any) {
+    setErr(e.message ?? "Erro ao criar pedido");
+  } finally {
+    setCreating(false);
   }
+}
 
   async function copyPix() {
     if (!pixCode) return;
