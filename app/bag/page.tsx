@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -95,7 +95,7 @@ type Profile = {
   city: string | null;
 };
 
-export default function BagPage() {
+function BagPageInner() {
   const [items, setItems] = useState<BagItem[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [creating, setCreating] = useState(false);
@@ -459,5 +459,12 @@ export default function BagPage() {
 
       <BottomNav />
     </main>
+  );
+}
+export default function BagPage() {
+  return (
+    <Suspense fallback={<main className="p-4 max-w-md mx-auto">Carregando…</main>}>
+      <BagPageInner />
+    </Suspense>
   );
 }
