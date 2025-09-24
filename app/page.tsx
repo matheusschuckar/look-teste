@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+// import Image from "next/image"; // descomentaria se for usar <Image />
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
@@ -39,7 +39,7 @@ type Profile = {
   number: string | null;
   complement: string | null;
   city: string | null;
-  state?: string | null; // <- ADICIONEI
+  state?: string | null;
   cep: string | null;
   status: "waitlist" | "approved";
 };
@@ -52,33 +52,24 @@ function isSPCity(city: string | null | undefined) {
 function cepOk(cep: string | null | undefined) {
   return (cep || "").replace(/\D/g, "").length === 8;
 }
-
-// somente endereço básico (para decidir se dá pra avaliar cobertura)
 function hasAddressBasics(p: Profile | null) {
   if (!p) return false;
   return !!(p.street && p.number && cepOk(p.cep));
 }
-
-// contato completo?
 function hasContact(p: Profile | null) {
   if (!p) return false;
   return !!(p.name && p.whatsapp);
 }
-
-// está dentro da área (São Paulo capital)?
 function inCoverage(p: Profile | null) {
   if (!p) return false;
   const cityOk = isSPCity(p.city);
   const stateOk = (p.state || "").toUpperCase() === "SP";
   return cityOk && stateOk;
 }
-
-// perfil “completo” (se quiser manter como requisito à parte)
 function profileComplete(p: Profile | null) {
   if (!p) return false;
   return hasAddressBasics(p) && hasContact(p) && inCoverage(p);
 }
-
 function toggleInSet<T>(set: Set<T>, value: T): Set<T> {
   const next = new Set(set);
   if (next.has(value)) next.delete(value);
@@ -103,8 +94,7 @@ export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  // mapa de views locais { [productId]: number }
-  const [views, setViews] = useState<Record<string, number>>({});
+  const [views, setViews] = useState<Record<string, number>>({}); // mapa de views locais
 
   // carrega views do localStorage e observa mudanças entre abas
   useEffect(() => {
@@ -195,40 +185,51 @@ export default function Home() {
     touchEndX.current = null;
   };
 
-  // Auth + Data unified (tolerante e carrega produtos quando há cobertura)
+  // ===========================
+  // Auth + Data unified (catálogo para todos, sem redirecionar guest)
+  // ===========================
   useEffect(() => {
     (async () => {
       try {
         const { data: u } = await supabase.auth.getUser();
+
         if (!u.user) {
-          router.replace("/auth");
-          return;
-        }
-
-        // tenta com `state`; se der erro de coluna, faz fallback sem `state`
-        let profResp = await supabase
-          .from("user_profiles")
-          .select(
-            "id,name,whatsapp,street,number,complement,city,state,cep,status"
-          )
-          .eq("id", u.user.id)
-          .single();
-
-        if (profResp.error && /state/i.test(String(profResp.error.message))) {
-          profResp = await supabase
+          // Visitante: catálogo público
+          const { data, error } = await supabase
+            .from("products")
+            .select(
+              "id,name,store_name,photo_url,eta_text,price_tag,category,gender,sizes,view_count"
+            )
+            .eq("is_active", true)
+            .limit(60);
+          if (error) throw error;
+          setProducts((data || []) as Product[]);
+          setProfile(null);
+        } else {
+          // Logado: perfil + mesmo catálogo
+          let profResp = await supabase
             .from("user_profiles")
-            .select("id,name,whatsapp,street,number,complement,city,cep,status")
+            .select(
+              "id,name,whatsapp,street,number,complement,city,state,cep,status"
+            )
             .eq("id", u.user.id)
             .single();
-          if (profResp.data) (profResp.data as any).state = null;
-        }
-        if (profResp.error) throw profResp.error;
 
-        const prof = profResp.data as Profile;
-        setProfile(prof);
+          if (profResp.error && /state/i.test(String(profResp.error.message))) {
+            profResp = await supabase
+              .from("user_profiles")
+              .select(
+                "id,name,whatsapp,street,number,complement,city,cep,status"
+              )
+              .eq("id", u.user.id)
+              .single();
+            if (profResp.data) (profResp.data as any).state = null;
+          }
+          if (profResp.error) throw profResp.error;
 
-        // Carrega produtos SE estiver em cobertura (São Paulo), mesmo que falte contato.
-        if (inCoverage(prof)) {
+          const prof = profResp.data as Profile;
+          setProfile(prof);
+
           const { data, error } = await supabase
             .from("products")
             .select(
@@ -241,17 +242,13 @@ export default function Home() {
         }
       } catch (e: any) {
         const msg = String(e?.message || "");
-        if (msg.toLowerCase().includes("auth")) {
-          router.replace("/auth");
-          return;
-        }
         console.error("[Home] load error:", msg);
         setErr(msg || "Erro inesperado");
       } finally {
         setLoading(false);
       }
     })();
-  }, [router]);
+  }, []);
 
   // Filtros
   const chipCategories = [
@@ -303,7 +300,7 @@ export default function Home() {
     selectedCategories.size > 0 ||
     chipCategory !== "Tudo";
 
-  // --- seu filtered (mantém igual) ---
+  // --- filtered ---
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
 
@@ -356,11 +353,10 @@ export default function Home() {
     selectedSizes,
   ]);
 
-  // --- 2.3: NOVO bloco: ranking por interesse (cole logo abaixo do filtered) ---
-  // pesos (ajuste à vontade)
-  const W_CAT = 0.9; // peso da categoria
-  const W_STORE = 0.6; // peso da loja
-  const JITTER = 0.2; // variedade
+  // ranking por interesse
+  const W_CAT = 0.9;
+  const W_STORE = 0.6;
+  const JITTER = 0.2;
 
   const filteredRanked = useMemo<Product[]>(() => {
     const prefs = getPrefs(); // { cat: {...}, store: {...} }
@@ -391,8 +387,16 @@ export default function Home() {
     : "São Paulo, SP";
 
   async function handleLogout() {
-    await supabase.auth.signOut();
-    router.replace("/auth");
+    try {
+      // fecha o drawer imediatamente
+      setDrawerOpen(false);
+      await supabase.auth.signOut();
+
+      // zera o profile para o header trocar para “Login” imediatamente
+      setProfile(null);
+    } finally {
+      router.replace("/");
+    }
   }
 
   // Render
@@ -408,27 +412,40 @@ export default function Home() {
             Ready to wear in minutes
           </p>
         </div>
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition"
-          aria-label="Menu"
-          title="Menu"
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            className="text-gray-700"
+
+        {/* Menu ou Login */}
+        {!loading && !profile ? (
+          <Link
+            href="/auth"
+            className="mt-1 inline-flex items-center rounded-full border border-gray-200 bg-white px-3 h-9 text-sm font-medium hover:bg-gray-50 transition"
+            aria-label="Login"
+            title="Login"
           >
-            <path
-              strokeWidth="2"
-              strokeLinecap="round"
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          </svg>
-        </button>
+            Login
+          </Link>
+        ) : (
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition"
+            aria-label="Menu"
+            title="Menu"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              className="text-gray-700"
+            >
+              <path
+                strokeWidth="2"
+                strokeLinecap="round"
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Drawer */}
@@ -455,11 +472,6 @@ export default function Home() {
                 <li>
                   <Link href="/profile" onClick={() => setDrawerOpen(false)}>
                     Perfil
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/address" onClick={() => setDrawerOpen(false)}>
-                    Trocar endereço
                   </Link>
                 </li>
                 <li>
@@ -491,7 +503,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Cadastro incompleto: endereço básico */}
+      {/* Cards de orientação — apenas para logado */}
       {profile && !hasAddressBasics(profile) && (
         <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900">
           <div className="text-sm font-medium">Complete seu endereço</div>
@@ -510,7 +522,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Cadastro incompleto: contato (nome/whats) */}
       {profile && hasAddressBasics(profile) && !hasContact(profile) && (
         <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-900">
           <div className="text-sm font-medium">Finalize seu cadastro</div>
@@ -528,7 +539,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Fora da área */}
       {profile && hasAddressBasics(profile) && !inCoverage(profile) && (
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
           <div className="text-sm font-medium">
@@ -556,8 +566,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Search + localização */}
-      {profile && inCoverage(profile) && (
+      {/* Search + localização — liberado para todos */}
+      {!loading && (
         <div className="mt-4 flex gap-2">
           <div className="flex-1 relative">
             <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
@@ -620,8 +630,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Banner carrossel */}
-      {!loading && profile && inCoverage(profile) && (
+      {/* Banner carrossel — liberado para todos */}
+      {!loading && (
         <div className="mt-4 overflow-hidden rounded-3xl relative">
           <div
             className="relative h-48 w-full"
@@ -716,8 +726,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Chips / Filtros */}
-      {!loading && profile && inCoverage(profile) && (
+      {/* Chips / Filtros — liberados para todos */}
+      {!loading && (
         <>
           {anyActiveFilter ? (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -765,7 +775,17 @@ export default function Home() {
             <div className="mt-3 flex items-center justify-between">
               <div className="overflow-x-auto no-scrollbar -ml-1 pr-2">
                 <div className="flex gap-2 pl-1">
-                  {chipCategories.map((c) => {
+                  {[
+                    "Tudo",
+                    "camiseta",
+                    "camisa",
+                    "vestido",
+                    "saia",
+                    "calça",
+                    "sapato",
+                    "bolsa",
+                    "jaqueta",
+                  ].map((c) => {
                     const active = chipCategory === c;
                     return (
                       <button
@@ -931,7 +951,7 @@ export default function Home() {
                         Selecione um ou mais tamanhos
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {sizesList.map((s) => {
+                        {(["PP", "P", "M", "G", "GG"] as const).map((s) => {
                           const active = selectedSizes.has(s);
                           return (
                             <button
@@ -967,7 +987,16 @@ export default function Home() {
                         Marque quantas quiser
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {allCategories.map((c) => {
+                        {[
+                          "camiseta",
+                          "camisa",
+                          "vestido",
+                          "saia",
+                          "calça",
+                          "sapato",
+                          "bolsa",
+                          "jaqueta",
+                        ].map((c) => {
                           const key = c.toLowerCase();
                           const active = selectedCategories.has(key);
                           return (
@@ -1017,43 +1046,34 @@ export default function Home() {
         </>
       )}
 
-      {/* Grid */}
-      {!loading && profile && inCoverage(profile) && (
+      {/* Grid de produtos — liberado para todos */}
+      {!loading && (
         <div className="mt-5 grid grid-cols-2 gap-4">
           {filteredRanked.map((p) => (
             <Link
               key={p.id}
               href={`/product/${p.id}`}
               onClick={() => {
-                // preferências (categoria + loja)
                 bumpCategory(p.category);
                 bumpStore(p.store_name);
-
-                // incremento OTIMISTA de views (sobe o número na hora)
                 setViews((prev) => {
                   const next = { ...prev };
                   const k = String(p.id);
                   next[k] = (next[k] || 0) + 1;
                   return next;
                 });
-                // a view “real” também é contada na página do produto (bumpView no ProductPage)
               }}
               className="rounded-2xl bg-white shadow-md overflow-hidden hover:shadow-lg transition border border-gray-100"
             >
               <div className="relative h-44">
-                {/* preço */}
                 <span className="absolute right-2 top-2 rounded-full bg-white/90 backdrop-blur px-2 py-0.5 text-[11px] font-medium shadow border border-gray-200">
                   {formatBRL(p.price_tag)}
                 </span>
-
-                {/* imagem */}
                 <img
                   src={p.photo_url}
                   alt={p.name}
                   className="w-full h-44 object-cover"
                 />
-
-                {/* badge de views — canto inferior esquerdo */}
                 <span className="absolute left-2 bottom-2 inline-flex items-center gap-1 rounded-full bg-black/65 text-white border border-black/20 px-2 py-0.5 text-[11px] font-medium backdrop-blur-sm">
                   <svg
                     width="14"
@@ -1098,8 +1118,8 @@ export default function Home() {
           )}
         </div>
       )}
+
       <BottomNav />
-      {/* espaço para o BottomNav fixo */}
       <div style={{ height: "calc(88px + env(safe-area-inset-bottom))" }} />
     </main>
   );
