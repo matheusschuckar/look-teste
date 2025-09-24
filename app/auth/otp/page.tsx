@@ -1,14 +1,27 @@
 // app/auth/otp/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type Step = "request" | "verify";
 
 export default function OtpPage() {
   const router = useRouter();
+
+  const search = useSearchParams();
+  const nextRaw = search?.get("next") || "/";
+
+  const next = useMemo(() => {
+    try {
+      const decoded = decodeURIComponent(nextRaw);
+      if (/^https?:\/\//i.test(decoded)) return "/";
+      return decoded || "/";
+    } catch {
+      return "/";
+    }
+  }, [nextRaw]);
 
   const [step, setStep] = useState<Step>("request");
   const [loading, setLoading] = useState(false);
@@ -21,13 +34,13 @@ export default function OtpPage() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
 
-  // Se já estiver logado, manda pra home
+  // Se já estiver logado, manda para `next`
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) router.replace("/");
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.user) router.replace(next);
     })();
-  }, [router]);
+  }, [router, next]);
 
   async function handleSendEmail(e: React.FormEvent) {
     e.preventDefault();
@@ -88,7 +101,7 @@ export default function OtpPage() {
 
       setOk("Senha alterada com sucesso! Redirecionando…");
       // pequeno delay para UX
-      setTimeout(() => router.replace("/"), 700);
+      setTimeout(() => router.replace(next), 700);
     } catch (e: any) {
       // Mensagens mais amigáveis para erros comuns
       const msg = String(e?.message || "");
@@ -330,7 +343,9 @@ export default function OtpPage() {
 
         <div className="mt-4 flex justify-center">
           <button
-            onClick={() => router.replace("/auth")}
+            onClick={() =>
+              router.replace(`/auth?next=${encodeURIComponent(nextRaw)}`)
+            }
             className="text-xs text-neutral-600 underline"
           >
             Back to sign in
@@ -340,3 +355,4 @@ export default function OtpPage() {
     </main>
   );
 }
+
