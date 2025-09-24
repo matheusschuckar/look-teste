@@ -192,11 +192,18 @@ export default function BagPage() {
         return;
       }
 
-      // Precisa de email para registrar pedido
-      if (!profile?.email) {
-        setErr("Finalize o login para continuar.");
-        return;
-      }
+     // Precisa de sessão + e-mail; se faltar, redireciona corretamente
+if (!profile?.email) {
+  const { data: u2 } = await supabase.auth.getUser();
+  if (!u2?.user) {
+    // sem sessão: vai pro auth e volta pro PIX
+    router.replace(`/auth?next=${encodeURIComponent("/bag?checkout=1#pix")}`);
+  } else {
+    // com sessão mas sem e-mail/cadastro: vai pro profile e depois volta pro PIX
+    router.replace(`/profile?next=${encodeURIComponent("/bag?checkout=1#pix")}`);
+  }
+  return;
+}
 
       // Gera PIX (copia-e-cola) com valor do pedido
       const key = (process.env.NEXT_PUBLIC_PIX_KEY || "").replace(/\D/g, "");
