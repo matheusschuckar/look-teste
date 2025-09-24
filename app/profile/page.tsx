@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -78,7 +78,7 @@ async function fetchCities(uf: string) {
   }
 }
 
-export default function ProfilePage() {
+function ProfilePageInner() {
   const router = useRouter();
   const search = useSearchParams();
   const nextRaw = search?.get("next") || "/";
@@ -505,5 +505,13 @@ export default function ProfilePage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-neutral-50" />}>
+      <ProfilePageInner />
+    </Suspense>
   );
 }
