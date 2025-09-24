@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import {
   getBag,
@@ -100,6 +101,8 @@ export default function BagPage() {
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
+  const router = useRouter();
+  const search = useSearchParams();
 
   // PIX mostrado após criar pedido
   const [pixCode, setPixCode] = useState<string | null>(null);
@@ -139,6 +142,18 @@ export default function BagPage() {
     })();
   }, []);
 
+  // Auto-checkout: se voltou do auth com checkout=1, dispara o pagamento
+  useEffect(() => {
+    const wantsCheckout = search?.get("checkout") === "1";
+    if (!wantsCheckout) return;
+    if (creating || pixCode) return;
+    if (items.length === 0) return;
+    // espera o profile carregar para ter email
+    if (!profile?.email) return;
+    handleCheckout();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, profile?.email, items.length, creating, pixCode]);
+
   function handleQty(i: number, q: number) {
     setItems(updateQty(i, Math.max(1, q)));
   }
@@ -167,13 +182,24 @@ export default function BagPage() {
         setErr("Sua sacola está vazia.");
         return;
       }
+
+      // Garante login: se não estiver logado, leva para /auth com retorno automático
+      const { data: u } = await supabase.auth.getUser();
+      const user = u?.user;
+      if (!user) {
+        const next = "/bag?checkout=1#pix";
+        router.push(`/auth?next=${encodeURIComponent(next)}`);
+        return;
+      }
+
+      // Precisa de email para registrar pedido
       if (!profile?.email) {
-        setErr("Faça login para continuar.");
+        setErr("Finalize o login para continuar.");
         return;
       }
 
       // Gera PIX (copia-e-cola) com valor do pedido
-      const key = (process.env.NEXT_PUBLIC_PIX_KEY || "").replace(/\D/g, ""); // CNPJ/CPF etc. sem pontuação
+      const key = (process.env.NEXT_PUBLIC_PIX_KEY || "").replace(/\D/g, "");
       const merchant = (
         process.env.NEXT_PUBLIC_PIX_MERCHANT || "LOOK PAGAMENTOS"
       ).toUpperCase();
@@ -200,7 +226,6 @@ export default function BagPage() {
 
       setCreating(true);
 
-      // Cria pedido no Airtable com o PIX Code incluso
       await createOrder({
         Status: "Aguardando Pagamento",
 
@@ -228,6 +253,13 @@ export default function BagPage() {
 
       setPixCode(payload);
       setOkMsg("Pedido criado! Pague via PIX para prosseguir.");
+      // opcional: rolar até a seção do PIX
+      setTimeout(() => {
+        if (typeof window !== "undefined") {
+          const el = document.querySelector("#pix-section");
+          el?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 50);
     } catch (e: any) {
       setErr(e.message ?? "Erro ao criar pedido");
     } finally {
@@ -360,7 +392,10 @@ export default function BagPage() {
           )}
 
           {pixCode && (
-            <div className="rounded-xl border p-4 bg-white mt-4">
+            <div
+              id="pix-section"
+              className="rounded-xl border p-4 bg-white mt-4"
+            >
               <h2 className="text-lg font-semibold mb-1">Pagamento PIX</h2>
               <p className="text-xs text-gray-700 mb-3">
                 Escaneie o QR ou toque em “Copiar código” para pagar. Valor:{" "}
@@ -421,3 +456,4 @@ export default function BagPage() {
     </main>
   );
 }
+
