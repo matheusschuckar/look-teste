@@ -383,46 +383,76 @@ export default function ProductPage() {
           sizes="(max-width: 480px) 100vw, 480px"
         />
 
-        {/* like + contador (minimalista) */}
+        {/* like + contador (somente exibição para visitantes) */}
         <div className="absolute right-3 bottom-3 z-20 flex items-center gap-2">
-          <button
-            aria-label={liked ? "Remover like" : "Dar like"}
-            disabled={likeBusy}
-            onClick={toggleLike}
-            className={`h-11 w-11 rounded-full border border-white/60 bg-white/80 backdrop-blur flex items-center justify-center active:scale-95 transition ${
-              likePulse ? "scale-110" : "scale-100"
-            }`}
-          >
-            {liked ? (
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="#e11d48"
-                stroke="none"
+          {userId ? (
+            <>
+              <button
+                aria-label={liked ? "Remover like" : "Dar like"}
+                disabled={likeBusy}
+                onClick={toggleLike}
+                className={`h-11 w-11 rounded-full border border-white/60 bg-white/80 backdrop-blur flex items-center justify-center active:scale-95 transition ${
+                  likePulse ? "scale-110" : "scale-100"
+                }`}
               >
-                <path d="M12 21s-7.5-4.35-9.5-8.4C1.3 9.6 2.7 6 6.4 6c2 0 3.1 1 3.6 1.7.5-.7 1.6-1.7 3.6-1.7 3.7 0 5.1 3.6 3.9 6.6C19.5 16.65 12 21 12 21z" />
-              </svg>
-            ) : (
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
+                {liked ? (
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="#e11d48"
+                    stroke="none"
+                  >
+                    <path d="M12 21s-7.5-4.35-9.5-8.4C1.3 9.6 2.7 6 6.4 6c2 0 3.1 1 3.6 1.7.5-.7 1.6-1.7 3.6-1.7 3.7 0 5.1 3.6 3.9 6.6C19.5 16.65 12 21 12 21z" />
+                  </svg>
+                ) : (
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                  >
+                    <path
+                      d="M20.8 12.6C18.8 16.65 12 21 12 21s-6.8-4.35-8.8-8.4C2 9.6 3.4 6 7.1 6c2 0 3.1 1 3.6 1.7.5-.7 1.6-1.7 3.6-1.7 3.7 0 5.1 3.6 3.9 6.6Z"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
+              </button>
+              <span className="px-2 py-1 rounded-full bg-white/80 backdrop-blur text-xs font-medium border border-white/60">
+                {likeCount}
+              </span>
+            </>
+          ) : (
+            <>
+              {/* visitante: ícone estático, sem onClick */}
+              <div
+                aria-label="Likes"
+                className="h-11 w-11 rounded-full border border-white/60 bg-white/60 backdrop-blur flex items-center justify-center opacity-80"
               >
-                <path
-                  d="M20.8 12.6C18.8 16.65 12 21 12 21s-6.8-4.35-8.8-8.4C2 9.6 3.4 6 7.1 6c2 0 3.1 1 3.6 1.7.5-.7 1.6-1.7 3.6-1.7 3.7 0 5.1 3.6 3.9 6.6Z"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
-          </button>
-          <span className="px-2 py-1 rounded-full bg-white/80 backdrop-blur text-xs font-medium border border-white/60">
-            {likeCount}
-          </span>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                >
+                  <path
+                    d="M20.8 12.6C18.8 16.65 12 21 12 21s-6.8-4.35-8.8-8.4C2 9.6 3.4 6 7.1 6c2 0 3.1 1 3.6 1.7.5-.7 1.6-1.7 3.6-1.7 3.7 0 5.1 3.6 3.9 6.6Z"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              <span className="px-2 py-1 rounded-full bg-white/80 backdrop-blur text-xs font-medium border border-white/60">
+                {likeCount}
+              </span>
+            </>
+          )}
         </div>
 
         <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
@@ -524,38 +554,44 @@ export default function ProductPage() {
           </div>
 
           {/* Novo comentário */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!newComment.trim()) return;
-              handlePostComment();
-            }}
-            className="mt-4"
-          >
-            <label htmlFor="new-comment" className="sr-only">
-              Novo comentário
-            </label>
-            <textarea
-              id="new-comment"
-              rows={3}
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Escreva um comentário (seja gentil ✨)"
-              className="w-full rounded-xl border border-gray-300 bg-white p-3 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black/10"
-            />
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-[11px] text-gray-500">
-                Seu nome aparece como primeiro nome + inicial.
-              </span>
-              <button
-                type="submit"
-                disabled={posting || newComment.trim().length < 2}
-                className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {posting ? "Enviando…" : "Publicar"}
-              </button>
+          {userId ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newComment.trim()) return;
+                handlePostComment();
+              }}
+              className="mt-4"
+            >
+              <label htmlFor="new-comment" className="sr-only">
+                Novo comentário
+              </label>
+              <textarea
+                id="new-comment"
+                rows={3}
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Escreva um comentário (seja gentil ✨)"
+                className="w-full rounded-xl border border-gray-300 bg-white p-3 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black/10"
+              />
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-[11px] text-gray-500">
+                  Seu nome aparece como primeiro nome + inicial.
+                </span>
+                <button
+                  type="submit"
+                  disabled={posting || newComment.trim().length < 2}
+                  className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {posting ? "Enviando…" : "Publicar"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+              Faça login para comentar.
             </div>
-          </form>
+          )}
         </div>
       </section>
 
@@ -612,3 +648,4 @@ export default function ProductPage() {
     </main>
   );
 }
+
