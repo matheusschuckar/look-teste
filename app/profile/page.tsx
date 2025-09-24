@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
 // WhatsApp com bandeira
@@ -80,6 +80,19 @@ async function fetchCities(uf: string) {
 
 export default function ProfilePage() {
   const router = useRouter();
+  const search = useSearchParams();
+  const nextRaw = search?.get("next") || "/";
+
+  const next = useMemo(() => {
+    try {
+      const decoded = decodeURIComponent(nextRaw);
+      // evita open-redirect externo
+      if (/^https?:\/\//i.test(decoded)) return "/";
+      return decoded || "/";
+    } catch {
+      return "/";
+    }
+  }, [nextRaw]);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -218,7 +231,7 @@ export default function ProfilePage() {
       }
 
       setOk("Perfil salvo com sucesso!");
-      setTimeout(() => router.replace("/"), 600);
+      setTimeout(() => router.replace(next), 600);
     } catch (e: any) {
       setErr(e?.message ?? "Erro ao salvar perfil");
     } finally {
