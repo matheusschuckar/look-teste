@@ -15,7 +15,6 @@ type Product = {
 };
 
 type LikeRow = { product_id: number; created_at: string };
-
 type LikeCountMap = Record<number, number>;
 
 function formatBRL(v: number) {
@@ -37,17 +36,17 @@ export default function SavedPage() {
   const [likeCounts, setLikeCounts] = useState<LikeCountMap>({});
   const [busyIds, setBusyIds] = useState<Set<number>>(new Set()); // unlikes em voo
 
-  // user
+  // user (sem redirecionar visitante)
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
       const uid = data.user?.id ?? null;
       setUserId(uid);
-      if (!uid) router.replace("/auth");
+      setLoading(false); // importante: libera a renderização mesmo sem login
     })();
-  }, [router]);
+  }, []);
 
-  // fetch likes + products (2 passos, sem join embutido)
+  // fetch likes + products (apenas logado)
   useEffect(() => {
     (async () => {
       if (!userId) return;
@@ -114,7 +113,7 @@ export default function SavedPage() {
   // unlike otimista
   async function handleUnlike(pid: number) {
     if (!userId) {
-      router.push("/auth");
+      router.push(`/auth?next=${encodeURIComponent("/saved")}`);
       return;
     }
     if (busyIds.has(pid)) return;
@@ -151,7 +150,7 @@ export default function SavedPage() {
     }
   }
 
-  const empty = !loading && products.length === 0;
+  const empty = userId && !loading && products.length === 0;
 
   return (
     <main className="bg-white text-black max-w-md mx-auto min-h-[100dvh] px-5 pb-28">
@@ -185,6 +184,23 @@ export default function SavedPage() {
       {err && <p className="mt-4 text-sm text-red-600">Erro: {err}</p>}
       {loading && <p className="mt-4 text-sm text-gray-600">Carregando…</p>}
 
+      {/* Visitante (sem login): mensagem para logar */}
+      {!loading && !userId && (
+        <div className="mt-10 rounded-2xl border border-neutral-200 bg-neutral-50 p-5 text-center">
+          <p className="text-sm text-neutral-800">
+            Faça <span className="font-semibold">login</span> para ver os
+            produtos salvos.
+          </p>
+          <Link
+            href={`/auth?next=${encodeURIComponent("/saved")}`}
+            className="mt-3 inline-flex h-11 items-center justify-center rounded-xl bg-black px-5 text-sm font-semibold text-white"
+          >
+            Fazer login
+          </Link>
+        </div>
+      )}
+
+      {/* Logado mas sem itens */}
       {empty && (
         <div className="mt-10 text-center">
           <p className="text-sm text-gray-600">Você ainda não salvou nada.</p>
@@ -197,7 +213,8 @@ export default function SavedPage() {
         </div>
       )}
 
-      {!loading && !empty && (
+      {/* Logado com itens */}
+      {userId && !loading && products.length > 0 && (
         <div className="mt-5 grid grid-cols-2 gap-4">
           {products.map((p) => {
             const pid = p.id;
