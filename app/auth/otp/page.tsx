@@ -1,13 +1,13 @@
 // app/auth/otp/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Step = "request" | "verify";
 
-export default function OtpPage() {
+function OtpPageInner() {
   const router = useRouter();
 
   const search = useSearchParams();
@@ -356,3 +356,10 @@ export default function OtpPage() {
   );
 }
 
+export default function OtpPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-neutral-50" />}>
+      <OtpPageInner />
+    </Suspense>
+  );
+}
