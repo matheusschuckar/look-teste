@@ -1,11 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
 export default function AuthPage() {
   const router = useRouter();
+  const search = useSearchParams();
+  const nextRaw = search?.get("next") || "/";
+
+  const next = useMemo(() => {
+    try {
+      const decoded = decodeURIComponent(nextRaw);
+      // evita open-redirect para domínios externos
+      if (/^https?:\/\//i.test(decoded)) return "/";
+      return decoded || "/";
+    } catch {
+      return "/";
+    }
+  }, [nextRaw]);
+
   const [mode, setMode] = useState<"signin" | "signup">("signin");
 
   const [email, setEmail] = useState("");
@@ -14,13 +28,13 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Se já estiver logado, manda pra home
+  // Se já estiver logado, manda para `next`
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) router.replace("/");
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.user) router.replace(next);
     })();
-  }, [router]);
+  }, [router, next]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,25 +42,27 @@ export default function AuthPage() {
     setErr(null);
     try {
       if (mode === "signin") {
+        // SIGN IN: respeita o next (se veio da Bag, vai pro PIX)
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
-        router.replace("/");
+        router.replace(next);
       } else {
-        // SIGN UP: só e-mail e senha; depois completa no /profile
+        // SIGN UP: cria conta e SEMPRE manda para o /profile antes,
+        // carregando o next para ser usado depois do perfil.
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
 
-        // cria/garante um stub do perfil (id + email) para a tela /profile
         if (data?.user) {
           await supabase
             .from("user_profiles")
             .upsert({ id: data.user.id, email }, { onConflict: "id" });
         }
 
-        router.replace("/profile");
+        // Envie o usuário ao Profile com o next original preservado
+        router.replace(`/profile?next=${encodeURIComponent(nextRaw)}`);
       }
     } catch (e: any) {
       setErr(e?.message || "Algo deu errado. Tente novamente.");
@@ -225,3 +241,4 @@ export default function AuthPage() {
     </main>
   );
 }
+
